@@ -11,3 +11,7 @@ extract the env variable into .env
 generate me @README.md how to run a project how to and setup.
 
 change @EXPECTED_BEHAVIOR.md into Gherkin file
+
+from claude.md with enginering practice listed. fix the project to apply those enginering practice.
+
+fix the project to apply CI/CD.

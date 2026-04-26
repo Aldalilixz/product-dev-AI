@@ -100,77 +100,92 @@ func jsonResponse(w http.ResponseWriter, status int, v any) {
 	json.NewEncoder(w).Encode(v)
 }
 
+type App struct {
+	store *Store
+}
+
+func newApp(s *Store) *App {
+	return &App{store: s}
+}
+
+func (a *App) routes() *http.ServeMux {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("GET /", a.handleIndex)
+	mux.HandleFunc("GET /manifest.webmanifest", a.handleManifest)
+	mux.HandleFunc("GET /sw.js", a.handleServiceWorker)
+	mux.HandleFunc("GET /api/todos", a.handleListTodos)
+	mux.HandleFunc("POST /api/todos", a.handleAddTodo)
+	mux.HandleFunc("PATCH /api/todos/{id}/toggle", a.handleToggleTodo)
+	mux.HandleFunc("DELETE /api/todos/{id}", a.handleDeleteTodo)
+	return mux
+}
+
+func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/html")
+	w.Write([]byte(htmlPage))
+}
+
+func (a *App) handleManifest(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/manifest+json")
+	w.Write([]byte(manifestJSON))
+}
+
+func (a *App) handleServiceWorker(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/javascript")
+	w.Write([]byte(serviceWorkerJS))
+}
+
+func (a *App) handleListTodos(w http.ResponseWriter, r *http.Request) {
+	tab := normalizeTab(Tab(r.URL.Query().Get("tab")))
+	todos := a.store.List(tab)
+	if todos == nil {
+		todos = []Todo{}
+	}
+	jsonResponse(w, http.StatusOK, todos)
+}
+
+func (a *App) handleAddTodo(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Text     string `json:"text"`
+		Tab      Tab    `json:"tab"`
+		Deadline string `json:"deadline"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Text == "" {
+		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "invalid"})
+		return
+	}
+	todo := a.store.Add(body.Text, normalizeTab(body.Tab), body.Deadline)
+	jsonResponse(w, http.StatusCreated, todo)
+}
+
+func (a *App) handleToggleTodo(w http.ResponseWriter, r *http.Request) {
+	if !a.store.Toggle(r.PathValue("id")) {
+		jsonResponse(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	jsonResponse(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (a *App) handleDeleteTodo(w http.ResponseWriter, r *http.Request) {
+	if !a.store.Delete(r.PathValue("id")) {
+		jsonResponse(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	jsonResponse(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func normalizeTab(tab Tab) Tab {
+	if tab == TabWork || tab == TabPrivate {
+		return tab
+	}
+	return TabWork
+}
+
 func main() {
 	loadDotEnv(".env")
 
-	mux := http.NewServeMux()
-
-	// Serve frontend
-	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html")
-		w.Write([]byte(htmlPage))
-	})
-
-	mux.HandleFunc("GET /manifest.webmanifest", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/manifest+json")
-		w.Write([]byte(manifestJSON))
-	})
-
-	mux.HandleFunc("GET /sw.js", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/javascript")
-		w.Write([]byte(serviceWorkerJS))
-	})
-
-	// API: list todos by tab
-	mux.HandleFunc("GET /api/todos", func(w http.ResponseWriter, r *http.Request) {
-		tab := Tab(r.URL.Query().Get("tab"))
-		if tab != TabWork && tab != TabPrivate {
-			tab = TabWork
-		}
-		todos := store.List(tab)
-		if todos == nil {
-			todos = []Todo{}
-		}
-		jsonResponse(w, 200, todos)
-	})
-
-	// API: add todo
-	mux.HandleFunc("POST /api/todos", func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			Text     string `json:"text"`
-			Tab      Tab    `json:"tab"`
-			Deadline string `json:"deadline"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Text == "" {
-			jsonResponse(w, 400, map[string]string{"error": "invalid"})
-			return
-		}
-		if body.Tab != TabWork && body.Tab != TabPrivate {
-			body.Tab = TabWork
-		}
-		t := store.Add(body.Text, body.Tab, body.Deadline)
-		jsonResponse(w, 201, t)
-	})
-
-	// API: toggle done
-	mux.HandleFunc("PATCH /api/todos/{id}/toggle", func(w http.ResponseWriter, r *http.Request) {
-		id := r.PathValue("id")
-		if !store.Toggle(id) {
-			jsonResponse(w, 404, map[string]string{"error": "not found"})
-			return
-		}
-		jsonResponse(w, 200, map[string]bool{"ok": true})
-	})
-
-	// API: delete todo
-	mux.HandleFunc("DELETE /api/todos/{id}", func(w http.ResponseWriter, r *http.Request) {
-		id := r.PathValue("id")
-		if !store.Delete(id) {
-			jsonResponse(w, 404, map[string]string{"error": "not found"})
-			return
-		}
-		jsonResponse(w, 200, map[string]bool{"ok": true})
-	})
+	app := newApp(store)
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -181,7 +196,7 @@ func main() {
 	for _, ip := range localIPv4() {
 		log.Printf("On your phone (same Wi-Fi): http://%s:%s", ip, port)
 	}
-	log.Fatal(http.ListenAndServe(addr, mux))
+	log.Fatal(http.ListenAndServe(addr, app.routes()))
 }
 
 const htmlPage = `<!DOCTYPE html>

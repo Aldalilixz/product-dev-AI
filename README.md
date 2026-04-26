@@ -48,6 +48,26 @@ Open in browser:
 go test main.go main_test.go
 ```
 
+## CI/CD
+
+This project includes GitHub Actions workflows:
+
+- CI: `.github/workflows/ci.yml`
+  - Runs on every push and pull request
+  - Checks `gofmt` formatting for `main.go` and `main_test.go`
+  - Runs `go test main.go main_test.go`
+- CD: `.github/workflows/cd.yml`
+  - Runs when you push a tag matching `v*` (example: `v1.0.0`)
+  - Builds cross-platform binaries (Linux/macOS/Windows)
+  - Uploads binaries as workflow artifacts
+
+To trigger CD:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
 ## How to Use
 
 - Switch between `Work` and `Private` tabs.

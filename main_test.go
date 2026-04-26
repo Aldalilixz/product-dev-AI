@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -121,5 +124,93 @@ func TestStoreCreatedAtSet(t *testing.T) {
 	// Expected behavior: CreatedAt is set to current server time.
 	if item.CreatedAt.Before(before) || item.CreatedAt.After(after) {
 		t.Fatalf("expected CreatedAt around now, got %v", item.CreatedAt)
+	}
+}
+
+func TestAPITodoLifecycleViaRoutes(t *testing.T) {
+	t.Parallel()
+
+	s := &Store{todos: []Todo{}}
+	app := newApp(s)
+	server := httptest.NewServer(app.routes())
+	defer server.Close()
+
+	createBody := `{"text":"Ship feature","tab":"private","deadline":"2031-01-01"}`
+	createRes, err := http.Post(server.URL+"/api/todos", "application/json", strings.NewReader(createBody))
+	if err != nil {
+		t.Fatalf("create request failed: %v", err)
+	}
+	defer createRes.Body.Close()
+	if createRes.StatusCode != http.StatusCreated {
+		t.Fatalf("expected 201 on create, got %d", createRes.StatusCode)
+	}
+	var created Todo
+	if err := json.NewDecoder(createRes.Body).Decode(&created); err != nil {
+		t.Fatalf("decode created todo failed: %v", err)
+	}
+	if created.ID == "" {
+		t.Fatal("expected created todo ID")
+	}
+
+	listRes, err := http.Get(server.URL + "/api/todos?tab=private")
+	if err != nil {
+		t.Fatalf("list request failed: %v", err)
+	}
+	defer listRes.Body.Close()
+	if listRes.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 on list, got %d", listRes.StatusCode)
+	}
+	var listed []Todo
+	if err := json.NewDecoder(listRes.Body).Decode(&listed); err != nil {
+		t.Fatalf("decode listed todos failed: %v", err)
+	}
+	if len(listed) != 1 {
+		t.Fatalf("expected 1 listed todo, got %d", len(listed))
+	}
+
+	toggleReq, _ := http.NewRequest(http.MethodPatch, server.URL+"/api/todos/"+created.ID+"/toggle", nil)
+	toggleRes, err := http.DefaultClient.Do(toggleReq)
+	if err != nil {
+		t.Fatalf("toggle request failed: %v", err)
+	}
+	defer toggleRes.Body.Close()
+	if toggleRes.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 on toggle, got %d", toggleRes.StatusCode)
+	}
+
+	deleteReq, _ := http.NewRequest(http.MethodDelete, server.URL+"/api/todos/"+created.ID, nil)
+	deleteRes, err := http.DefaultClient.Do(deleteReq)
+	if err != nil {
+		t.Fatalf("delete request failed: %v", err)
+	}
+	defer deleteRes.Body.Close()
+	if deleteRes.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 on delete, got %d", deleteRes.StatusCode)
+	}
+}
+
+func TestLoadDotEnvAppliesFileValues(t *testing.T) {
+	tmpDir := t.TempDir()
+	envPath := filepath.Join(tmpDir, ".env")
+	content := bytes.NewBufferString("")
+	content.WriteString("# comment\n")
+	content.WriteString("PORT=9091\n")
+	content.WriteString("EXTRA_FLAG=yes\n")
+	if err := os.WriteFile(envPath, content.Bytes(), 0644); err != nil {
+		t.Fatalf("write temp env file failed: %v", err)
+	}
+
+	t.Setenv("PORT", "")
+	t.Setenv("EXTRA_FLAG", "")
+	_ = os.Unsetenv("PORT")
+	_ = os.Unsetenv("EXTRA_FLAG")
+
+	loadDotEnv(envPath)
+
+	if got := os.Getenv("PORT"); got != "9091" {
+		t.Fatalf("expected PORT=9091, got %q", got)
+	}
+	if got := os.Getenv("EXTRA_FLAG"); got != "yes" {
+		t.Fatalf("expected EXTRA_FLAG=yes, got %q", got)
 	}
 }
