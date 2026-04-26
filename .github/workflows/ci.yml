@@ -20,8 +20,8 @@ jobs:
 
       - name: Verify formatting
         run: |
-          test -z "$(gofmt -l main.go main_test.go)"
+          test -z "$(gofmt -l *.go)"
 
       - name: Run tests
         run: |
-          go test main.go main_test.go
+          go test *.go

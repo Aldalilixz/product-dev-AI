@@ -252,3 +252,43 @@ func TestListTodosReturnsETagAndSupportsNotModified(t *testing.T) {
 		t.Fatalf("expected 304 when ETag matches, got %d", secondRes.StatusCode)
 	}
 }
+
+func TestAddTodoRejectsInvalidDeadline(t *testing.T) {
+	t.Parallel()
+
+	s := &Store{todos: []Todo{}}
+	app := newApp(s)
+	server := httptest.NewServer(app.routes())
+	defer server.Close()
+
+	body := `{"text":"invalid date","tab":"work","deadline":"2026/31/12"}`
+	res, err := http.Post(server.URL+"/api/todos", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid deadline, got %d", res.StatusCode)
+	}
+}
+
+func TestAddTodoAcceptsValidDeadline(t *testing.T) {
+	t.Parallel()
+
+	s := &Store{todos: []Todo{}}
+	app := newApp(s)
+	server := httptest.NewServer(app.routes())
+	defer server.Close()
+
+	body := `{"text":"valid date","tab":"work","deadline":"2026-12-31"}`
+	res, err := http.Post(server.URL+"/api/todos", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("expected 201 for valid deadline, got %d", res.StatusCode)
+	}
+}

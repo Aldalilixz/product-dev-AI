@@ -23,3 +23,9 @@ fix the todo when open both web and mobile - adding a todo list on mobile - then
 the display it has - it show to direct the it is rerender. make it much more smooth. but also cheap, not take much performance
 
 re-do it using TDD
+
+review the whole code.
+
+fix the code follow by what u review.
+
+fix the claude.md to insert the prompts not only when i use agentic mode - also when i use plan mode.

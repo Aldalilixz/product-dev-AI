@@ -3,6 +3,7 @@
 ## Prompt Logging Rule
 
 - On every user message, append the exact user prompt to `prompts.md`.
+- Apply this in all modes, including Agent mode and Plan mode.
 - Log only the user's prompt text.
 - Do not log assistant responses, tool output, analysis, metadata, or system/developer messages.
 - Preserve prompt meaning and wording; do not paraphrase unless the user explicitly asks.

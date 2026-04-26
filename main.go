@@ -163,6 +163,10 @@ func (a *App) handleAddTodo(w http.ResponseWriter, r *http.Request) {
 		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "invalid"})
 		return
 	}
+	if !isValidDeadline(body.Deadline) {
+		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "invalid deadline"})
+		return
+	}
 	todo := a.store.Add(body.Text, normalizeTab(body.Tab), body.Deadline)
 	jsonResponse(w, http.StatusCreated, todo)
 }
@@ -194,6 +198,14 @@ func makeTodosETag(todos []Todo) string {
 	payload, _ := json.Marshal(todos)
 	sum := sha256.Sum256(payload)
 	return "\"" + hex.EncodeToString(sum[:]) + "\""
+}
+
+func isValidDeadline(deadline string) bool {
+	if deadline == "" {
+		return true
+	}
+	_, err := time.Parse("2006-01-02", deadline)
+	return err == nil
 }
 
 func main() {
@@ -842,5 +854,8 @@ func loadDotEnv(path string) {
 		}
 
 		_ = os.Setenv(key, value)
+	}
+	if err := scanner.Err(); err != nil {
+		log.Printf("warning: failed reading %s: %v", path, err)
 	}
 }
