@@ -214,3 +214,41 @@ func TestLoadDotEnvAppliesFileValues(t *testing.T) {
 		t.Fatalf("expected EXTRA_FLAG=yes, got %q", got)
 	}
 }
+
+func TestListTodosReturnsETagAndSupportsNotModified(t *testing.T) {
+	t.Parallel()
+
+	s := &Store{todos: []Todo{}}
+	created := s.Add("ETag check", TabWork, "")
+	if created.ID == "" {
+		t.Fatal("expected created todo ID")
+	}
+
+	app := newApp(s)
+	server := httptest.NewServer(app.routes())
+	defer server.Close()
+
+	firstRes, err := http.Get(server.URL + "/api/todos?tab=work")
+	if err != nil {
+		t.Fatalf("first list request failed: %v", err)
+	}
+	defer firstRes.Body.Close()
+	if firstRes.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 from first list request, got %d", firstRes.StatusCode)
+	}
+	etag := firstRes.Header.Get("ETag")
+	if etag == "" {
+		t.Fatal("expected ETag header on list response")
+	}
+
+	secondReq, _ := http.NewRequest(http.MethodGet, server.URL+"/api/todos?tab=work", nil)
+	secondReq.Header.Set("If-None-Match", etag)
+	secondRes, err := http.DefaultClient.Do(secondReq)
+	if err != nil {
+		t.Fatalf("second list request failed: %v", err)
+	}
+	defer secondRes.Body.Close()
+	if secondRes.StatusCode != http.StatusNotModified {
+		t.Fatalf("expected 304 when ETag matches, got %d", secondRes.StatusCode)
+	}
+}

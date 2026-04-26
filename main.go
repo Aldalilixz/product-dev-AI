@@ -2,6 +2,8 @@ package main
 
 import (
 	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -142,6 +144,12 @@ func (a *App) handleListTodos(w http.ResponseWriter, r *http.Request) {
 	if todos == nil {
 		todos = []Todo{}
 	}
+	etag := makeTodosETag(todos)
+	w.Header().Set("ETag", etag)
+	if r.Header.Get("If-None-Match") == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
 	jsonResponse(w, http.StatusOK, todos)
 }
 
@@ -180,6 +188,12 @@ func normalizeTab(tab Tab) Tab {
 		return tab
 	}
 	return TabWork
+}
+
+func makeTodosETag(todos []Todo) string {
+	payload, _ := json.Marshal(todos)
+	sum := sha256.Sum256(payload)
+	return "\"" + hex.EncodeToString(sum[:]) + "\""
 }
 
 func main() {
@@ -570,21 +584,59 @@ const htmlPage = `<!DOCTYPE html>
 
 <script>
 let currentTab = 'work';
+let liveRefreshTimer = null;
+let isLoading = false;
+let lastListSignature = '';
+let lastStatsSignature = '';
+const tabETags = { work: '', private: '' };
+
+function todosSignature(todos) {
+  return todos.map(t => [
+    t.id,
+    t.done ? 1 : 0,
+    t.tab || '',
+    t.deadline || '',
+    t.text || ''
+  ].join('|')).join('~');
+}
 
 function switchTab(tab) {
   currentTab = tab;
+  lastListSignature = '';
+  lastStatsSignature = '';
   document.querySelectorAll('.tab').forEach(el => {
     el.classList.toggle('active', el.dataset.tab === tab);
   });
-  load();
+  load(true);
 }
 
-async function load() {
-  const list = document.getElementById('list');
-  const res = await fetch('/api/todos?tab=' + currentTab);
-  const todos = await res.json();
-  renderList(todos);
-  renderStats(todos);
+async function load(force) {
+  if (isLoading) return;
+  isLoading = true;
+  try {
+    const headers = {};
+    if (!force && tabETags[currentTab]) {
+      headers['If-None-Match'] = tabETags[currentTab];
+    }
+    const res = await fetch('/api/todos?tab=' + currentTab, { cache: 'no-store', headers });
+    if (res.status === 304) return;
+    if (!res.ok) return;
+    tabETags[currentTab] = res.headers.get('ETag') || '';
+    const todos = await res.json();
+    const sig = todosSignature(todos);
+    if (force || sig !== lastListSignature) {
+      renderList(todos);
+      lastListSignature = sig;
+    }
+    if (force || sig !== lastStatsSignature) {
+      renderStats(todos);
+      lastStatsSignature = sig;
+    }
+  } catch (e) {
+    // Keep current UI state if a transient network issue occurs.
+  } finally {
+    isLoading = false;
+  }
 }
 
 function renderStats(todos) {
@@ -663,12 +715,12 @@ async function addTodo() {
   });
   document.getElementById('new-text').value = '';
   document.getElementById('new-deadline').value = '';
-  load();
+  load(true);
 }
 
 async function toggle(id) {
   await fetch('/api/todos/' + id + '/toggle', { method: 'PATCH' });
-  load();
+  load(true);
 }
 
 async function del(id) {
@@ -676,7 +728,7 @@ async function del(id) {
   if (el) { el.style.opacity = '0'; el.style.transform = 'translateX(20px)'; el.style.transition = 'all 0.2s'; }
   setTimeout(async () => {
     await fetch('/api/todos/' + id, { method: 'DELETE' });
-    load();
+    load(true);
   }, 180);
 }
 
@@ -686,7 +738,15 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-load();
+function startLiveRefresh() {
+  if (liveRefreshTimer) return;
+  liveRefreshTimer = setInterval(() => {
+    if (!document.hidden) load();
+  }, 2000);
+}
+
+load(true);
+startLiveRefresh();
 </script>
 </body>
 </html>`

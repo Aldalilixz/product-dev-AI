@@ -15,3 +15,11 @@ change @EXPECTED_BEHAVIOR.md into Gherkin file
 from claude.md with enginering practice listed. fix the project to apply those enginering practice.
 
 fix the project to apply CI/CD.
+
+generate me another markdown file and capture architecture, solution decision
+
+fix the todo when open both web and mobile - adding a todo list on mobile - then appear on web the same way.
+
+the display it has - it show to direct the it is rerender. make it much more smooth. but also cheap, not take much performance
+
+re-do it using TDD
