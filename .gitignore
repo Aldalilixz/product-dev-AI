@@ -1,0 +1,30 @@
+# Binaries
+main
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binaries and coverage
+*.test
+*.out
+coverage.out
+
+# Go workspace/module cache files (local)
+go.work.sum
+
+# IDE/editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Cursor local state
+.cursor/
+
+# Environment/local secrets
+.env
+.env.*
+*.local
